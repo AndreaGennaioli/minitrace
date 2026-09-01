@@ -3,7 +3,10 @@
 #include <sys/wait.h>
 #include <sys/ptrace.h>
 #include <unistd.h>
-#include <string.h>
+
+#include "syscalls.h"
+
+void print_syscall(struct user_regs_struct *regs);
 
 int main(int argc, char *argv[], char *envp[]) {
   pid_t child = -1;
@@ -49,16 +52,18 @@ int main(int argc, char *argv[], char *envp[]) {
     if(WIFEXITED(status) || WIFSIGNALED(status)) break;
 
     ptrace(PTRACE_GETREGS, child, 0, &regs);
-    len = snprintf(buff, 1024, "Entering syscall %llu\n", regs.orig_rax);
-    write(2, buff, len);
+    print_syscall(&regs);
 
     // exiting the syscall
     ptrace(PTRACE_SYSCALL, child, 0, 0);
     waitpid(child, &status, 0);
-    if(WIFEXITED(status) || WIFSIGNALED(status)) break;
+    if(WIFEXITED(status) || WIFSIGNALED(status)) {
+      write(2, "\n", 1);
+      break;
+    }
 
     ptrace(PTRACE_GETREGS, child, 0, &regs);
-    len = snprintf(buff, 1024, "Exited previous syscall with code %lld\n", (long long)regs.rax);
+    len = snprintf(buff, sizeof(buff), " = %lld\n", (long long)regs.rax);
     write(2, buff, len);
   }
 
@@ -69,4 +74,24 @@ int main(int argc, char *argv[], char *envp[]) {
   }
 
   return 0;
+}
+
+void print_syscall(struct user_regs_struct *regs) {
+  const char *syscall_name = NULL;
+  char buff[1024];
+  int off = 0;
+
+  if(regs->orig_rax < syscall_names_count)
+    syscall_name = syscall_names[regs->orig_rax];
+
+  if(syscall_name == NULL) {
+    off += snprintf(buff, sizeof(buff), "<syscall-%llu>", regs->orig_rax);
+  } else {
+    off += snprintf(buff, sizeof(buff), "%s", syscall_name);
+  }
+
+  // currently printing all 6 parameters. Should only print effectly used parameters.
+  off += snprintf(buff + off, sizeof(buff) - off, "(0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx)", regs->rdi, regs->rsi, regs->rdx, regs->r10, regs->r8, regs->r9);
+
+  write(2, buff, off);
 }

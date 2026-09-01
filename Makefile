@@ -6,7 +6,7 @@ SRC_DIR=src
 OBJS_DIR=obj
 DIST_DIR=.
 
-OBJS=$(OBJS_DIR)/main.o
+OBJS=$(OBJS_DIR)/main.o $(OBJS_DIR)/syscalls.o
 
 mt: $(OBJS)
 	$(CC) $(CFLAGS) -o $(DIST_DIR)/$@ $^
