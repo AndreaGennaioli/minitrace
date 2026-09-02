@@ -77,21 +77,53 @@ int main(int argc, char *argv[], char *envp[]) {
 }
 
 void print_syscall(struct user_regs_struct *regs) {
-  const char *syscall_name = NULL;
+  const syscall_info *si = NULL;
+  long nr = (long)regs->orig_rax;
   char buff[1024];
-  int off = 0;
+  int off = 0, i = 0;
+  unsigned long long params[6] = {regs->rdi, regs->rsi, regs->rdx, regs->r10, regs->r8, regs->r9};
 
-  if(regs->orig_rax < syscall_names_count)
-    syscall_name = syscall_names[regs->orig_rax];
+  si = syscall_lookup(nr);
 
-  if(syscall_name == NULL) {
-    off += snprintf(buff, sizeof(buff), "<syscall-%llu>", regs->orig_rax);
+  if(si == NULL) {
+    // if the syscall is unknown print a generic firm
+    off += snprintf(buff, sizeof(buff), "<syscall-%ld>", nr);
+    off += snprintf(buff + off, sizeof(buff) - off, "(0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx)", regs->rdi, regs->rsi, regs->rdx, regs->r10, regs->r8, regs->r9);
   } else {
-    off += snprintf(buff, sizeof(buff), "%s", syscall_name);
+    off += snprintf(buff, sizeof(buff), "%s(", si->name);
+    while(i < 6 && si->args[i] != SATYPE_NONE) {
+      if(i > 0) off += snprintf(buff + off, sizeof(buff) - off, ", ");
+      switch(si->args[i]){
+        case SATYPE_FLAGS:
+          off += snprintf(buff + off, sizeof(buff) - off, "0x%llx", params[i]);
+          break;
+        case SATYPE_UNSIGNED:
+          off += snprintf(buff + off, sizeof(buff) - off, "%llu", params[i]);
+          break;
+        case SATYPE_SIGNED:
+          off += snprintf(buff + off, sizeof(buff) - off, "%d", (int)params[i]);
+          break;
+        case SATYPE_SIGNED64:
+          off += snprintf(buff + off, sizeof(buff) - off, "%lld", params[i]);
+          break;
+        case SATYPE_STRING:
+          // TODO: grep string from process memory
+          off += snprintf(buff + off, sizeof(buff) - off, "0x%016llx", params[i]);
+          break;
+        case SATYPE_HEX:
+          off += snprintf(buff + off, sizeof(buff) - off, "0x%llx", params[i]);
+          break;
+        case SATYPE_OCT:
+          off += snprintf(buff + off, sizeof(buff) - off, "0%03llo", params[i]);
+          break;
+        case SATYPE_NONE:
+        default:
+          break;
+      }
+      i++;
+    }
+    off += snprintf(buff + off, sizeof(buff) - off, ")");
   }
-
-  // currently printing all 6 parameters. Should only print effectly used parameters.
-  off += snprintf(buff + off, sizeof(buff) - off, "(0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx)", regs->rdi, regs->rsi, regs->rdx, regs->r10, regs->r8, regs->r9);
 
   write(2, buff, off);
 }
