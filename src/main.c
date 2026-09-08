@@ -1,19 +1,24 @@
 #include <stdio.h>
+#include <string.h>
 #include <sys/user.h>
 #include <sys/wait.h>
 #include <sys/ptrace.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "syscalls.h"
 
-void print_syscall(struct user_regs_struct *regs);
+void print_syscall(struct user_regs_struct *regs, int mem_fd);
+
+enum { RS_FAULT, RS_OK, RS_TRUNC };
+int read_cstring(int mem_fd, unsigned long long addr, int max, char *out, int *outlen);
 
 int main(int argc, char *argv[], char *envp[]) {
   pid_t child = -1;
-  int status = -1, len = 0;
+  int status = -1, len = 0, mem_file_fd = -1;
   char *target = NULL;
   char **child_argv = NULL;
-  char buff[1024];
+  char buff[1024], mem_file_path[32];
   struct user_regs_struct regs;
 
   if(argc < 2){
@@ -45,6 +50,15 @@ int main(int argc, char *argv[], char *envp[]) {
   // timing issue
   waitpid(child, &status, 0);
 
+  fprintf(stdout, "Child created with PID = %d\n", child);
+  snprintf(mem_file_path, sizeof(mem_file_path), "/proc/%d/mem", child);
+  mem_file_fd = open(mem_file_path, O_RDONLY);
+
+  if(mem_file_fd < 0) {
+    perror("open()");
+    return 1;
+  }
+
   while(1) {
     // entering the syscall
     ptrace(PTRACE_SYSCALL, child, 0, 0);
@@ -52,7 +66,7 @@ int main(int argc, char *argv[], char *envp[]) {
     if(WIFEXITED(status) || WIFSIGNALED(status)) break;
 
     ptrace(PTRACE_GETREGS, child, 0, &regs);
-    print_syscall(&regs);
+    print_syscall(&regs, mem_file_fd);
 
     // exiting the syscall
     ptrace(PTRACE_SYSCALL, child, 0, 0);
@@ -73,14 +87,16 @@ int main(int argc, char *argv[], char *envp[]) {
     printf("Child process was terminated by signal %d\n", WTERMSIG(status));
   }
 
+  close(mem_file_fd);
+
   return 0;
 }
 
-void print_syscall(struct user_regs_struct *regs) {
+void print_syscall(struct user_regs_struct *regs, int mem_fd) {
   const syscall_info *si = NULL;
   long nr = (long)regs->orig_rax;
-  char buff[1024];
-  int off = 0, i = 0;
+  char buff[1024], string_buff[64];
+  int off = 0, i = 0, nread = 0, read_success = RS_FAULT;
   unsigned long long params[6] = {regs->rdi, regs->rsi, regs->rdx, regs->r10, regs->r8, regs->r9};
 
   si = syscall_lookup(nr);
@@ -107,8 +123,12 @@ void print_syscall(struct user_regs_struct *regs) {
           off += snprintf(buff + off, sizeof(buff) - off, "%lld", params[i]);
           break;
         case SATYPE_STRING:
-          // TODO: grep string from process memory
-          off += snprintf(buff + off, sizeof(buff) - off, "0x%016llx", params[i]);
+          read_success = read_cstring(mem_fd, params[i], sizeof(string_buff), string_buff, &nread);
+          if(read_success != RS_FAULT) {
+            off += snprintf(buff + off, sizeof(buff) - off, "0x%016llx = \"%s\"%s", params[i], string_buff, read_success == RS_OK ? "" : "...");
+          } else {
+            off += snprintf(buff + off, sizeof(buff) - off, "0x%016llx", params[i]);
+          }
           break;
         case SATYPE_HEX:
           off += snprintf(buff + off, sizeof(buff) - off, "0x%llx", params[i]);
@@ -126,4 +146,35 @@ void print_syscall(struct user_regs_struct *regs) {
   }
 
   write(2, buff, off);
+}
+
+int read_cstring(int mem_fd, unsigned long long addr, int max, char *out, int *outlen) {
+  ssize_t nread = 0;
+
+  if(addr == 0) {
+    *outlen = 0;
+    out[0] = '\0';
+    return RS_FAULT;
+  }
+
+  nread = pread(mem_fd, out, (size_t)max - 1, (off_t)addr);
+
+  if(nread <= 0) {
+    *outlen = 0;
+    out[0] = '\0';
+    return RS_FAULT;
+  }
+
+  // check if in the bytes read there is the null char ...
+  char *null = memchr(out, '\0', (size_t)nread);
+  // ... if found, return the read string
+  if(null != 0) {
+    // set the actual string length
+    *outlen = null - out;
+    return RS_OK;
+  }
+
+  out[nread] = '\0';
+  *outlen = nread;
+  return RS_TRUNC;
 }
