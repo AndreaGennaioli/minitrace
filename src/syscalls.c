@@ -3,7 +3,7 @@
 
 static const syscall_info syscall_table[] = {
   [SYS_read]           = { "read",  {SATYPE_SIGNED, SATYPE_HEX, SATYPE_UNSIGNED} },
-  [SYS_write]          = { "write", {SATYPE_SIGNED, SATYPE_HEX, SATYPE_UNSIGNED} },
+  [SYS_write]          = { "write", {SATYPE_SIGNED, SATYPE_STRING, SATYPE_UNSIGNED} },
   [SYS_open]           = { "open",  {SATYPE_STRING, SATYPE_FLAGS, SATYPE_OCT} },
   [SYS_close]          = { "close", {SATYPE_SIGNED} },
   [SYS_stat]           = { "stat",  {SATYPE_STRING, SATYPE_HEX} }, 
@@ -82,8 +82,8 @@ static const syscall_info syscall_table[] = {
   [SYS_readlinkat]     = { "readlinkat", {SATYPE_SIGNED, SATYPE_STRING, SATYPE_HEX, SATYPE_SIGNED} },
   [SYS_exit_group]     = { "exit_group", {SATYPE_SIGNED} },
   [SYS_sigaltstack]     = { "sigaltstack", {SATYPE_HEX, SATYPE_HEX} },
-  [SYS_geteuid]     = { "sigaltstack", {SATYPE_NONE} },
-  [SYS_getegid]     = { "sigaltstack", {SATYPE_NONE} },
+  [SYS_geteuid]     = { "geteuid", {SATYPE_NONE} },
+  [SYS_getegid]     = { "getegid", {SATYPE_NONE} },
   [SYS_prctl]     = { "prctl", {SATYPE_SIGNED, SATYPE_HEX, SATYPE_HEX, SATYPE_HEX, SATYPE_HEX} },
   [SYS_statx]     = { "statx", {SATYPE_SIGNED, SATYPE_STRING, SATYPE_FLAGS, SATYPE_HEX, SATYPE_HEX} },
 };
