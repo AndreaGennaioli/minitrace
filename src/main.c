@@ -5,10 +5,14 @@
 #include <sys/ptrace.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <stdarg.h>
 
 #include "syscalls.h"
 
 void print_syscall(struct user_regs_struct *regs, int mem_fd);
+// safely append the formatted string to buf using *off as offset inside buf.
+// *off is incremented by the written bytes and truncated to cap-1 to prevent overflows.
+void appends(char *buf, size_t cap, size_t *off, const char *fmt, ...);
 
 enum { RS_FAULT, RS_OK, RS_TRUNC };
 int read_cstring(int mem_fd, unsigned long long addr, int max, char *out, int *outlen);
@@ -96,45 +100,46 @@ void print_syscall(struct user_regs_struct *regs, int mem_fd) {
   const syscall_info *si = NULL;
   long nr = (long)regs->orig_rax;
   char buff[1024], string_buff[64];
-  int off = 0, i = 0, nread = 0, read_success = RS_FAULT;
+  int i = 0, nread = 0, read_success = RS_FAULT;
+  size_t off = 0;
   unsigned long long params[6] = {regs->rdi, regs->rsi, regs->rdx, regs->r10, regs->r8, regs->r9};
 
   si = syscall_lookup(nr);
 
   if(si == NULL) {
     // if the syscall is unknown print a generic firm
-    off += snprintf(buff, sizeof(buff), "<syscall-%ld>", nr);
-    off += snprintf(buff + off, sizeof(buff) - off, "(0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx)", regs->rdi, regs->rsi, regs->rdx, regs->r10, regs->r8, regs->r9);
+    appends(buff, sizeof(buff), &off, "<syscall-%ld>", nr);
+    appends(buff, sizeof(buff), &off, "(0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx, 0x%llx)", regs->rdi, regs->rsi, regs->rdx, regs->r10, regs->r8, regs->r9);
   } else {
-    off += snprintf(buff, sizeof(buff), "%s(", si->name);
+    appends(buff, sizeof(buff), &off, "%s(", si->name);
     while(i < 6 && si->args[i] != SATYPE_NONE) {
-      if(i > 0) off += snprintf(buff + off, sizeof(buff) - off, ", ");
+      if(i > 0) appends(buff, sizeof(buff), &off, ", ");
       switch(si->args[i]){
         case SATYPE_FLAGS:
-          off += snprintf(buff + off, sizeof(buff) - off, "0x%llx", params[i]);
+          appends(buff, sizeof(buff), &off, "0x%llx", params[i]);
           break;
         case SATYPE_UNSIGNED:
-          off += snprintf(buff + off, sizeof(buff) - off, "%llu", params[i]);
+          appends(buff, sizeof(buff), &off, "%llu", params[i]);
           break;
         case SATYPE_SIGNED:
-          off += snprintf(buff + off, sizeof(buff) - off, "%d", (int)params[i]);
+          appends(buff, sizeof(buff), &off, "%d", (int)params[i]);
           break;
         case SATYPE_SIGNED64:
-          off += snprintf(buff + off, sizeof(buff) - off, "%lld", params[i]);
+          appends(buff, sizeof(buff), &off, "%lld", params[i]);
           break;
         case SATYPE_STRING:
           read_success = read_cstring(mem_fd, params[i], sizeof(string_buff), string_buff, &nread);
           if(read_success != RS_FAULT) {
-            off += snprintf(buff + off, sizeof(buff) - off, "0x%016llx = \"%s\"%s", params[i], string_buff, read_success == RS_OK ? "" : "...");
+            appends(buff, sizeof(buff), &off, "0x%016llx = \"%s\"%s", params[i], string_buff, read_success == RS_OK ? "" : "...");
           } else {
-            off += snprintf(buff + off, sizeof(buff) - off, "0x%016llx", params[i]);
+            appends(buff, sizeof(buff), &off, "0x%016llx", params[i]);
           }
           break;
         case SATYPE_HEX:
-          off += snprintf(buff + off, sizeof(buff) - off, "0x%llx", params[i]);
+          appends(buff, sizeof(buff), &off, "0x%llx", params[i]);
           break;
         case SATYPE_OCT:
-          off += snprintf(buff + off, sizeof(buff) - off, "0%03llo", params[i]);
+          appends(buff, sizeof(buff), &off, "0%03llo", params[i]);
           break;
         case SATYPE_NONE:
         default:
@@ -142,7 +147,7 @@ void print_syscall(struct user_regs_struct *regs, int mem_fd) {
       }
       i++;
     }
-    off += snprintf(buff + off, sizeof(buff) - off, ")");
+    appends(buff, sizeof(buff), &off, ")");
   }
 
   write(2, buff, off);
@@ -177,4 +182,19 @@ int read_cstring(int mem_fd, unsigned long long addr, int max, char *out, int *o
   out[nread] = '\0';
   *outlen = nread;
   return RS_TRUNC;
+}
+
+void appends(char *buf, size_t cap, size_t *off, const char *fmt, ...) {
+  if(buf == NULL || fmt == NULL || *off >= cap)
+    return;
+  va_list ap;
+  va_start(ap, fmt);
+  int n = vsnprintf(buf+*off, cap-*off, fmt, ap);
+  va_end(ap);
+
+  if(n > 0) {
+    *off += (size_t)n;
+    // truncate the lenght
+    if(*off >= cap) *off = cap-1;
+  }
 }
