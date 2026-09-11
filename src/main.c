@@ -1,3 +1,4 @@
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/user.h>
@@ -19,10 +20,12 @@ int read_cstring(int mem_fd, unsigned long long addr, int max, char *out, int *o
 
 int main(int argc, char *argv[], char *envp[]) {
   pid_t child = -1;
+  enum {EXP_ENTRY, EXP_EXIT} expected = EXP_ENTRY;
   int status = -1, len = 0, mem_file_fd = -1;
   char *target = NULL;
   char **child_argv = NULL;
   char buff[1024], mem_file_path[32];
+  void *data;
   struct user_regs_struct regs;
 
   if(argc < 2){
@@ -63,26 +66,38 @@ int main(int argc, char *argv[], char *envp[]) {
     return 1;
   }
 
+  // PTRACE_O_TRACESYSGOOD sets bit 7 of the signal number of a syscall trap delivery.
+  //    Useful to distinguish TRAP signal delivery stop from syscall stops.
+  // PTRACE_O_EXITKILL sends SIGKILL to tracee if tracer exits
+  if(ptrace(PTRACE_SETOPTIONS, child, 0, (void *)(PTRACE_O_TRACESYSGOOD|PTRACE_O_EXITKILL)) == -1) {
+    perror("PTRACE_SETOPTIONS");
+    return 1;
+  }
+
+  data = 0;
   while(1) {
-    // entering the syscall
-    ptrace(PTRACE_SYSCALL, child, 0, 0);
+    ptrace(PTRACE_SYSCALL, child, 0, data);
     waitpid(child, &status, 0);
     if(WIFEXITED(status) || WIFSIGNALED(status)) break;
 
-    ptrace(PTRACE_GETREGS, child, 0, &regs);
-    print_syscall(&regs, mem_file_fd);
-
-    // exiting the syscall
-    ptrace(PTRACE_SYSCALL, child, 0, 0);
-    waitpid(child, &status, 0);
-    if(WIFEXITED(status) || WIFSIGNALED(status)) {
-      write(2, "\n", 1);
-      break;
+    // check if tracer has received a signal-delivery stop or a syscall stop
+    if(WIFSTOPPED(status) && WSTOPSIG(status) != (SIGTRAP | 0x80)) {
+      len = snprintf(buff, sizeof(buff), "tracee has received signal %d\n", WSTOPSIG(status));
+      write(2, buff, len);
+      data = (void *)(long int)WSTOPSIG(status);
+    } else {
+      if(expected == EXP_ENTRY) {
+        ptrace(PTRACE_GETREGS, child, 0, &regs);
+        print_syscall(&regs, mem_file_fd);
+        expected = EXP_EXIT;
+      } else if(expected == EXP_EXIT) {
+        ptrace(PTRACE_GETREGS, child, 0, &regs);
+        len = snprintf(buff, sizeof(buff), " = %lld\n", (long long)regs.rax);
+        write(2, buff, len);
+        expected = EXP_ENTRY;
+      }
+      data = 0;
     }
-
-    ptrace(PTRACE_GETREGS, child, 0, &regs);
-    len = snprintf(buff, sizeof(buff), " = %lld\n", (long long)regs.rax);
-    write(2, buff, len);
   }
 
   if(WIFEXITED(status)) {
