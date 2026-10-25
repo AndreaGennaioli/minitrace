@@ -2,6 +2,10 @@
 
 `minitrace` is a didactic (and simple) strace-like syscall tracer written in C for Linux x86-64 systems.
 
+<p align="center">
+  <img src="assets/demo.gif" alt="minitrace tracing cat" width="720">
+</p>
+
 Work in progress: see below what this tracer can and cannot do.
 
 ## Requirements
