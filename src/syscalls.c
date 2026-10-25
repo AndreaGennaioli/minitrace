@@ -86,6 +86,8 @@ static const syscall_info syscall_table[] = {
   [SYS_getegid]     = { "getegid", {SATYPE_NONE} },
   [SYS_prctl]     = { "prctl", {SATYPE_SIGNED, SATYPE_HEX, SATYPE_HEX, SATYPE_HEX, SATYPE_HEX} },
   [SYS_statx]     = { "statx", {SATYPE_SIGNED, SATYPE_STRING, SATYPE_FLAGS, SATYPE_HEX, SATYPE_HEX} },
+  [SYS_splice]    = { "splice", {SATYPE_SIGNED, SATYPE_HEX, SATYPE_SIGNED, SATYPE_HEX, SATYPE_UNSIGNED, SATYPE_FLAGS}},
+  [SYS_fadvise64] = { "fadvise64", {SATYPE_SIGNED, SATYPE_SIGNED64, SATYPE_UNSIGNED, SATYPE_SIGNED}}
 };
 
 static const size_t syscall_table_size = sizeof(syscall_table) / sizeof(syscall_table[0]);
