@@ -10,11 +10,9 @@
 
 Work in progress: see below what this tracer can and cannot do.
 
-## Requirements
-
-Linux x86-64, gcc, make.
-
 ## Build and run
+
+Requirements: Linux x86-64, gcc, make.
 
 ```bash
 make
