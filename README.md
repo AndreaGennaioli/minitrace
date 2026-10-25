@@ -5,7 +5,7 @@
 <p align="center">
   <img src="assets/demo.gif" alt="minitrace tracing cat" width="720">
   <br/>
-  <sub>`minitrace` tracing `cat`</sub>
+  <sub><code>minitrace</code> tracing <code>cat</code></sub>
 </p>
 
 Work in progress: see below what this tracer can and cannot do.
