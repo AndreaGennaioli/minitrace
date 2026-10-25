@@ -24,7 +24,7 @@ make clean
 
 ## What minitrace can do
 
-- Trace the syscall flow and identify the most common syscalls (84 currently).
+- Trace the syscall flow and identify the most common syscalls (86 currently).
 - Correctly distinguish between signal-delivery stops and syscall stops.
 - Print the syscall arguments in different formats (hex, integer, unsigned integer, string, ...) knowing the syscall's name.
 - Print the first characters of a string used as a parameter. This is achieved by correctly reading `/proc/<childpid>/mem`.
