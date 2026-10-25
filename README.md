@@ -4,6 +4,7 @@
 
 <p align="center">
   <img src="assets/demo.gif" alt="minitrace tracing cat" width="720">
+  <br/>
   <sub>`minitrace` tracing `cat`</sub>
 </p>
 
